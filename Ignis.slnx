@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="Ignis.Context.GLFW/Ignis.Context.GLFW.csproj" Id="dd06238c-f5f3-4421-9d31-4ede865b7ff7" />
+  <Project Path="Ignis.Core/Ignis.Core.csproj" />
+  <Project Path="Ignis.EasyBuilder/Ignis.EasyBuilder.csproj" Id="21ef73aa-8dcb-48f1-966a-fa788769460b" />
+  <Project Path="Ignis.Platform.Graphics.Vulkan/Ignis.Platform.Graphics.Vulkan.csproj" />
+  <Project Path="Ignis.Platform.Input.GLFW/Ignis.Platform.Input.GLFW.csproj" />
+  <Project Path="Ignis.Platform.Window.GLFW/Ignis.Platform.Window.GLFW.csproj" />
+  <Project Path="Ignis.TestGame/Ignis.TestGame.csproj" Id="47557179-a984-40ed-ad62-b1aa87892406" />
+</Solution>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.GLFW" Version="2.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignis.Context.GLFW\Ignis.Context.GLFW.csproj" />
+    <ProjectReference Include="..\Ignis.Platform.Graphics.Vulkan\Ignis.Platform.Graphics.Vulkan.csproj" PrivateAssets="compile" />
+    <ProjectReference Include="..\Ignis.Platform.Input.GLFW\Ignis.Platform.Input.GLFW.csproj" PrivateAssets="compile" />
+    <ProjectReference Include="..\Ignis.Platform.Window.GLFW\Ignis.Platform.Window.GLFW.csproj" PrivateAssets="compile" />
+  </ItemGroup>
+
+</Project>
