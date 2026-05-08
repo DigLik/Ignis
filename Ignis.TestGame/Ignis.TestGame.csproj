@@ -1,12 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+	</PropertyGroup>
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Ignis.Core\Ignis.Core.csproj" />
-    <ProjectReference Include="..\Ignis.EasyBuilder\Ignis.EasyBuilder.csproj" />
-  </ItemGroup>
-
+	<ItemGroup>
+		<ProjectReference Include="..\Ignis.Core\Ignis.Core.csproj" />
+		<ProjectReference Include="..\Ignis.Platform\Ignis.Platform.csproj" />
+	</ItemGroup>
 </Project>

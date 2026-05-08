@@ -4,14 +4,20 @@ using System.Runtime.InteropServices;
 
 namespace Ignis.Core.Utils.Collections;
 
-public unsafe struct NativeList<T>(int initialCapacity = 8) : IDisposable where T : unmanaged
+public sealed unsafe class NativeList<T>(
+    int initialCapacity = 8) : IDisposable where T : unmanaged
 {
-    private T* _data = (T*)NativeMemory.Alloc((nuint)(initialCapacity * sizeof(T)));
+    private T* _data = (T*)NativeMemory.Alloc(
+        (nuint)(initialCapacity * sizeof(T)));
 
-    public int Count { get; private set; } = 0;
+    private bool _isDisposed;
+
+    public int Count { get; private set; }
     public int Capacity { get; private set; } = initialCapacity;
 
-    public readonly Span<T> Data
+    ~NativeList() => Dispose(false);
+
+    public Span<T> Data
     {
         get
         {
@@ -20,7 +26,7 @@ public unsafe struct NativeList<T>(int initialCapacity = 8) : IDisposable where 
         }
     }
 
-    public readonly ref T this[int index]
+    public ref T this[int index]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
@@ -51,7 +57,8 @@ public unsafe struct NativeList<T>(int initialCapacity = 8) : IDisposable where 
     private void Grow()
     {
         Capacity *= 2;
-        _data = (T*)NativeMemory.Realloc(_data, (nuint)(Capacity * sizeof(T)));
+        _data = (T*)NativeMemory.Realloc(
+            _data, (nuint)(Capacity * sizeof(T)));
     }
 
     public void Resize(int newSize, T defaultValue = default)
@@ -60,12 +67,17 @@ public unsafe struct NativeList<T>(int initialCapacity = 8) : IDisposable where 
         if (newSize > Capacity)
         {
             Capacity = newSize;
-            _data = (T*)NativeMemory.Realloc(_data, (nuint)(Capacity * sizeof(T)));
+            _data = (T*)NativeMemory.Realloc(
+                _data, (nuint)(Capacity * sizeof(T)));
         }
 
         if (newSize > Count)
+        {
             for (int i = Count; i < newSize; i++)
+            {
                 _data[i] = defaultValue;
+            }
+        }
 
         Count = newSize;
     }
@@ -76,33 +88,43 @@ public unsafe struct NativeList<T>(int initialCapacity = 8) : IDisposable where 
         Count = 0;
     }
 
-    public void Dispose()
+    private void Dispose(bool _)
     {
+        if (_isDisposed) return;
+
         if (_data != null)
         {
             NativeMemory.Free(_data);
             _data = null;
         }
+
         Capacity = 0;
         Count = 0;
+        _isDisposed = true;
     }
 
-    [Conditional("DEBUG")]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private readonly void ThrowIfDisposed()
+    public void Dispose()
     {
-        if (_data == null)
-            throw new ObjectDisposedException(
-                nameof(NativeList<>),
-                "Коллекция не инициализирована или уже освобождена."
-            );
+        Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
     [Conditional("DEBUG")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private readonly void ThrowIfOutOfBounds(int index)
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(
+            _isDisposed, typeof(NativeList<T>));
+    }
+
+    [Conditional("DEBUG")]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ThrowIfOutOfBounds(int index)
     {
         if ((uint)index >= (uint)Count)
-            throw new IndexOutOfRangeException($"Индекс {index} находится вне границ. Размер коллекции: {Count}.");
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(index), $"Индекс {index} вне границ.");
+        }
     }
 }

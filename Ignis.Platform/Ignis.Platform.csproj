@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<ItemGroup>
+		<ProjectReference Include="..\Ignis.Core\Ignis.Core.csproj" />
+		<ProjectReference Include="..\Vulkan\Vulkan.csproj" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::IsOsPlatform('Windows'))">
+		<ProjectReference Include="..\Bindings\Windows\Windows.csproj" />
+	</ItemGroup>
+
+	<ItemGroup Condition="!$([MSBuild]::IsOsPlatform('Windows'))">
+		<Compile Remove="Windows\**\*.cs" />
+	</ItemGroup>
+</Project>

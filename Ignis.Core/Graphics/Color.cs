@@ -6,16 +6,16 @@ namespace Ignis.Core.Graphics;
 public readonly struct Color(float r, float g, float b, float a = 1f) : IEquatable<Color>
 {
     /// <summary>Красный канал [0..1].</summary>
-    public readonly float R = r;
+    public float R { get; } = r;
 
     /// <summary>Зелёный канал [0..1].</summary>
-    public readonly float G = g;
+    public float G { get; } = g;
 
     /// <summary>Синий канал [0..1].</summary>
-    public readonly float B = b;
+    public float B { get; } = b;
 
     /// <summary>Альфа-канал (прозрачность) [0..1]. 1 — полностью непрозрачный.</summary>
-    public readonly float A = a;
+    public float A { get; } = a;
 
     #region Предопределённые цвета
 
@@ -66,7 +66,9 @@ public readonly struct Color(float r, float g, float b, float a = 1f) : IEquatab
     public static bool operator !=(Color left, Color right) => !left.Equals(right);
 
     public bool Equals(Color other) => R == other.R && G == other.G && B == other.B && A == other.A;
+
     public override bool Equals(object? obj) => obj is Color c && Equals(c);
+
     public override int GetHashCode() => HashCode.Combine(R, G, B, A);
 
     #endregion
