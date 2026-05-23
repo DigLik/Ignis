@@ -55,8 +55,8 @@ public sealed partial class Mouse : IDisposable
 
     public Vector2 GetWorldPosition(Vector2 position, Vector2 boundingBox)
     {
-        float w = _window.Size.Width;
-        float h = _window.Size.Height;
+        float w = _window.Size.X;
+        float h = _window.Size.Y;
         if (w <= 0 || h <= 0) return position;
         return position + MousePosition * (boundingBox * 0.5f);
     }

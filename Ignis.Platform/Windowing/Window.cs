@@ -1,5 +1,4 @@
-﻿using System.Drawing;
-
+﻿using Ignis.Core.CoreTypes.Numerics;
 using Ignis.Core.Window;
 
 namespace Ignis.Platform.Windowing;
@@ -24,8 +23,8 @@ public sealed partial class Window : IDisposable
 
     private partial void SetTitlePlatform(string title);
 
-    public Size Size { get; set; }
-    public Point Position { get; set; }
+    public Vector2Int Size { get; set; }
+    public Vector2Int Position { get; set; }
     public bool IsVisible { get; set; }
     public bool ShouldClose { get; internal set; }
     public bool CursorVisible { get; set; }

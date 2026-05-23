@@ -6,34 +6,40 @@ using Ignis.Platform.Graphics;
 using Ignis.Platform.Input;
 using Ignis.Platform.Windowing;
 
-using var window = new Window { Title = "Ignis" };
-using var keyboard = new Keyboard(window);
-using var mouse = new Mouse(window);
-using var renderer = new Renderer(window);
-
-while (!window.ShouldClose)
+internal sealed class Program
 {
-    keyboard.Update();
-    mouse.Update();
-    window.Update();
+    private static void Main()
+    {
+        using var window = new Window { Title = "Ignis" };
+        using var keyboard = new Keyboard(window);
+        using var mouse = new Mouse(window);
+        using var renderer = new Renderer(window);
 
-    if (keyboard.IsKeyPressed(Key.Escape))
-        window.Close();
+        while (!window.ShouldClose)
+        {
+            keyboard.Update();
+            mouse.Update();
+            window.Update();
 
-    var windowSize = window.Size;
-    Vector2 windowCenter = new(windowSize.Width / 2f, windowSize.Height / 2f);
-    float minSize = MathF.Min(windowSize.Width, windowSize.Height);
+            if (keyboard.IsKeyPressed(Key.Escape))
+                window.Close();
+             
+            var windowSize = window.Size;
+            Vector2 windowCenter = new(windowSize.X / 2f, windowSize.Y / 2f);
+            var minSize = MathF.Min(windowSize.X, windowSize.Y);
 
-    float halfMinSize = minSize / 2f;
+            var halfMinSize = minSize / 2f;
 
-    if (!renderer.BeginFrame())
-        continue;
+            if (!renderer.BeginFrame())
+                continue;
 
-    renderer.UpdateCamera(Vector2.Zero, windowCenter * 2);
+            renderer.UpdateCamera(Vector2.Zero, windowCenter * 2);
 
-    renderer.ClearBackground(Color.Black);
-    renderer.DrawRectangle(windowCenter, windowCenter, 0, Color.White);
-    renderer.DrawCircle(windowCenter, halfMinSize, Color.Black);
+            renderer.ClearBackground(Color.Black);
+            renderer.DrawRectangle(windowCenter, windowCenter, 0, Color.White);
+            renderer.DrawCircle(windowCenter, halfMinSize, Color.Black);
 
-    renderer.EndFrame();
+            renderer.EndFrame();
+        }
+    }
 }

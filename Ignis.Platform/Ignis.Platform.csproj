@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<ItemGroup>
 		<ProjectReference Include="..\Ignis.Core\Ignis.Core.csproj" />
-		<ProjectReference Include="..\Vulkan\Vulkan.csproj" />
+		<ProjectReference Include="..\Bindings\Vulkan\Vulkan.csproj" />
 	</ItemGroup>
 
 	<ItemGroup Condition="$([MSBuild]::IsOsPlatform('Windows'))">

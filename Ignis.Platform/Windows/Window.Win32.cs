@@ -1,8 +1,8 @@
-﻿using System.Drawing;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using Ignis.Bindings.Windows;
+using Ignis.Core.CoreTypes.Numerics;
 
 namespace Ignis.Platform.Windowing;
 
@@ -55,9 +55,10 @@ public sealed unsafe partial class Window
         _windows[Handle] = this;
 
         User32.GetClientRect(Handle, out var rect);
-        Size = new Size(
+        Size = new Vector2Int(
             rect.right - rect.left,
-            rect.bottom - rect.top);
+            rect.bottom - rect.top
+        );
 
         User32.ShowWindow(Handle, User32.SW_SHOW);
     }
@@ -114,7 +115,7 @@ public sealed unsafe partial class Window
                 case User32.WM_SIZE:
                     int width = (int)(lParam & 0xFFFF);
                     int height = (int)((lParam >> 16) & 0xFFFF);
-                    window.Size = new Size(width, height);
+                    window.Size = new(width, height);
 
                     window.SizeChanged?.Invoke(
                         window,

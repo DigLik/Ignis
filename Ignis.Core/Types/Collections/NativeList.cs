@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Ignis.Core.Utils.Collections;
+namespace Ignis.Core.CoreTypes.Collections;
 
 public sealed unsafe class NativeList<T>(
     int initialCapacity = 8) : IDisposable where T : unmanaged
@@ -56,7 +56,7 @@ public sealed unsafe class NativeList<T>(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void Grow()
     {
-        Capacity *= 2;
+        Capacity = Capacity == 0 ? 4 : Capacity * 2;
         _data = (T*)NativeMemory.Realloc(
             _data, (nuint)(Capacity * sizeof(T)));
     }

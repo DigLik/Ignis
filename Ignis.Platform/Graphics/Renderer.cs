@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 #endif
 
 using Ignis.Bindings.Vulkan;
+using Ignis.Core.CoreTypes.Numerics;
 using Ignis.Core.Graphics;
 using Ignis.Platform.Windowing;
 
@@ -304,8 +305,8 @@ public sealed unsafe partial class Renderer : IDisposable
         _swapchainExtent = caps.currentExtent;
         if (_swapchainExtent.width == uint.MaxValue)
         {
-            _swapchainExtent.width = (uint)_window.Size.Width;
-            _swapchainExtent.height = (uint)_window.Size.Height;
+            _swapchainExtent.width = (uint)_window.Size.X;
+            _swapchainExtent.height = (uint)_window.Size.Y;
         }
 
         uint imageCount = caps.minImageCount + 1;
@@ -694,7 +695,7 @@ public sealed unsafe partial class Renderer : IDisposable
     public void DrawPolygon(ReadOnlySpan<Vector2> p, Color c) { }
     public void DrawText(string t, Vector2 p, float s, Color c) { }
     public void UpdateCamera(Vector2 p, Vector2 b) { }
-    public void Resize(System.Drawing.Size newSize) { }
+    public void Resize(Vector2Int newSize) { }
 #pragma warning restore CA1822, IDE0060
 
     public void Dispose()

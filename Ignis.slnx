@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/Bindings/">
     <Project Path="Bindings/Windows/Windows.csproj" Id="842df655-01b0-40e2-860d-dd336d4c22f4" />
-    <Project Path="Vulkan/Vulkan.csproj" Id="802c3d55-b94e-45d4-83d7-e5b2eb40778b" />
+    <Project Path="Bindings/Vulkan/Vulkan.csproj" Id="802c3d55-b94e-45d4-83d7-e5b2eb40778b" />
   </Folder>
   <Folder Name="/Элементы решения/">
     <File Path="Directory.Build.props" />

@@ -70,8 +70,8 @@ public sealed unsafe partial class Mouse
         {
             User32.ScreenToClient(_window.Handle, ref pt);
 
-            float w = _window.Size.Width;
-            float h = _window.Size.Height;
+            float w = _window.Size.X;
+            float h = _window.Size.Y;
 
             if (w > 0 && h > 0)
             {
