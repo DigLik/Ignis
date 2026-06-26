@@ -13,7 +13,7 @@ using var keyboard = new Keyboard(window);
 using var mouse = new Mouse(window);
 using var renderer = new Renderer(window)
 {
-    VSync = VSyncMode.Mailbox
+    VSync = VSyncMode.Off
 };
 
 var game = new Game(window, keyboard, mouse, renderer);
