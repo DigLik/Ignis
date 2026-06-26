@@ -20,4 +20,4 @@ var game = new Game(window, keyboard, mouse, renderer);
 
 renderer.RenderRequested += game.UpdateAndRender;
 
-window.WaitClose();
+window.WaitClose();

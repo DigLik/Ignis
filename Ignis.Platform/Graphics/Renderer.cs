@@ -58,6 +58,7 @@ public sealed unsafe partial class Renderer : IDisposable
 
     /// <summary>Время, прошедшее с момента начала предыдущего кадра, в секундах.</summary>
     public float DeltaTime { get; private set; }
+
     private long _lastFrameTicks;
 
     private readonly System.Diagnostics.Stopwatch _stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -350,7 +351,9 @@ public sealed unsafe partial class Renderer : IDisposable
             Resize(e.Size);
     }
 
-    private void OnWindowResizeEnded(object? sender, EventArgs e) { }
+    private void OnWindowResizeEnded(object? sender, EventArgs e)
+    {
+    }
 
     /// <summary>Изменяет размер внутренних ресурсов рендеринга (swapchain и др.) в соответствии с новым размером окна.</summary>
     /// <param name="newSize">Новый размер клиентской области окна.</param>
