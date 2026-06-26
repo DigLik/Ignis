@@ -88,12 +88,10 @@ internal sealed unsafe class VulkanDevice : IDisposable
         uint deviceCount;
         Vk.EnumeratePhysicalDevices(Instance, &deviceCount, null);
 
-#pragma warning disable CA1508
         if (deviceCount == 0)
         {
             throw new InvalidOperationException("GPU не найден.");
         }
-#pragma warning restore CA1508
 
         nint[] devices = new nint[deviceCount];
         fixed (nint* pDevices = devices)

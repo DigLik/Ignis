@@ -1,4 +1,3 @@
-#pragma warning disable CA1003
 using System.Numerics;
 using Ignis.Bindings.Vulkan;
 using Ignis.Core.Numerics;
@@ -65,7 +64,7 @@ public sealed unsafe partial class Renderer : IDisposable
 
     private static partial nint GetVulkanLoader();
     private partial nint CreatePlatformSurface(nint instance);
-    private partial void DisposePlatformSpecific();
+    partial void DisposePlatformSpecific();
 
     /// <summary>Создает и инициализирует новый экземпляр класса <see cref="Renderer"/> для указанного окна.</summary>
     /// <param name="window">Окно, в котором будет производиться отрисовка.</param>

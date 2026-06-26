@@ -21,12 +21,12 @@ internal sealed unsafe class VulkanPipeline : IDisposable
 
     private void CreatePipeline(int swapchainImageFormat, nint descriptorSetLayout)
     {
-        fixed (byte* pCode = Shaders.shader_task)
+        fixed (byte* pCode = Shaders.SHADER_TASK)
         {
             VkShaderModuleCreateInfo createInfo = new()
             {
                 sType = Vk.StructureTypeShaderModuleCreateInfo,
-                codeSize = (nuint)Shaders.shader_task.Length,
+                codeSize = (nuint)Shaders.SHADER_TASK.Length,
                 pCode = (uint*)pCode
             };
             nint module;
@@ -35,12 +35,12 @@ internal sealed unsafe class VulkanPipeline : IDisposable
             TaskShaderModule = module;
         }
 
-        fixed (byte* pCode = Shaders.shader_mesh)
+        fixed (byte* pCode = Shaders.SHADER_MESH)
         {
             VkShaderModuleCreateInfo createInfo = new()
             {
                 sType = Vk.StructureTypeShaderModuleCreateInfo,
-                codeSize = (nuint)Shaders.shader_mesh.Length,
+                codeSize = (nuint)Shaders.SHADER_MESH.Length,
                 pCode = (uint*)pCode
             };
             nint module;
@@ -49,12 +49,12 @@ internal sealed unsafe class VulkanPipeline : IDisposable
             MeshShaderModule = module;
         }
 
-        fixed (byte* pCode = Shaders.shader_frag)
+        fixed (byte* pCode = Shaders.SHADER_FRAG)
         {
             VkShaderModuleCreateInfo createInfo = new()
             {
                 sType = Vk.StructureTypeShaderModuleCreateInfo,
-                codeSize = (nuint)Shaders.shader_frag.Length,
+                codeSize = (nuint)Shaders.SHADER_FRAG.Length,
                 pCode = (uint*)pCode
             };
             nint module;

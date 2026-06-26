@@ -1,13 +1,10 @@
 using System.Runtime.InteropServices;
-
 using Ignis.Bindings.Windows;
 using Ignis.Core.Numerics;
 
 namespace Ignis.Platform.Windowing;
 
-#pragma warning disable CA1724
 public sealed unsafe partial class Window
-#pragma warning restore CA1724
 {
     private static bool _classRegistered;
     private static readonly Dictionary<nint, Window> _windows = [];
@@ -164,6 +161,7 @@ public sealed unsafe partial class Window
                     return 0;
             }
         }
+
         return User32.DefWindowProcW(hWnd, msg, wParam, lParam);
     }
 
@@ -195,6 +193,7 @@ public sealed unsafe partial class Window
         int width = adjustRect.right - adjustRect.left;
         int height = adjustRect.bottom - adjustRect.top;
 
-        User32.SetWindowPos(Handle, 0, 0, 0, width, height, User32.SWP_NOMOVE | User32.SWP_NOZORDER | User32.SWP_NOACTIVATE);
+        User32.SetWindowPos(Handle, 0, 0, 0, width, height,
+            User32.SWP_NOMOVE | User32.SWP_NOZORDER | User32.SWP_NOACTIVATE);
     }
 }

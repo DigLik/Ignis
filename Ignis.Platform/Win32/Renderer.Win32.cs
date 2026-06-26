@@ -22,7 +22,7 @@ public sealed unsafe partial class Renderer
 
         nint surface;
         if (Vk.CreateWin32SurfaceKHR(
-            instance, &createInfo, null, &surface) != 0)
+                instance, &createInfo, null, &surface) != 0)
         {
             throw new InvalidOperationException(
                 "Ошибка VkSurfaceKHR (Win32).");
@@ -30,10 +30,4 @@ public sealed unsafe partial class Renderer
 
         return surface;
     }
-
-#pragma warning disable CA1822
-    private partial void DisposePlatformSpecific()
-    {
-    }
-#pragma warning restore CA1822
 }

@@ -1,6 +1,4 @@
-#pragma warning disable CA1003
 using System.Numerics;
-
 using Ignis.Core.Input;
 using Ignis.Platform.Windowing;
 

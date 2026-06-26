@@ -1,5 +1,3 @@
-#pragma warning disable CA1031, CA1303, CA1305, CA1308, CA2263
-
 using System.Runtime.InteropServices;
 using System.Text;
 using Silk.NET.Shaderc;
@@ -54,9 +52,15 @@ internal static class Program
                 string json = File.ReadAllText(cachePath);
                 oldCache = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
             }
-            catch
+            catch (System.Text.Json.JsonException)
             {
                 // Игнорируем ошибку чтения битого кэша
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
             }
         }
 
@@ -110,7 +114,7 @@ internal static class Program
             void CompileShader(string filePath, ShaderKind kind)
             {
                 string fileName = Path.GetFileName(filePath);
-                string varName = fileName.Replace('.', '_').ToLowerInvariant();
+                string varName = fileName.Replace('.', '_').ToUpperInvariant();
 
                 Console.WriteLine($"Компиляция {fileName}...");
 
@@ -160,14 +164,14 @@ internal static class Program
                     codeBuilder.AppendLine();
                 first = false;
 
-                codeBuilder.AppendLine($"    internal static ReadOnlySpan<byte> {varName} => new byte[{compiledBytes.Length}]");
+                codeBuilder.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"    internal static ReadOnlySpan<byte> {varName} => new byte[{compiledBytes.Length}]");
                 codeBuilder.AppendLine("    {");
 
                 StringBuilder lineBuilder = new();
                 lineBuilder.Append("        ");
                 for (int i = 0; i < compiledBytes.Length; i++)
                 {
-                    lineBuilder.Append($"0x{compiledBytes[i]:X2}");
+                    lineBuilder.Append(System.Globalization.CultureInfo.InvariantCulture, $"0x{compiledBytes[i]:X2}");
                     if (i < compiledBytes.Length - 1)
                     {
                         lineBuilder.Append(", ");
@@ -214,7 +218,17 @@ internal static class Program
 
             return 0;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine($"Ошибка при компиляции шейдеров: {ex.Message}");
+            return 3;
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"Ошибка при компиляции шейдеров: {ex.Message}");
+            return 3;
+        }
+        catch (UnauthorizedAccessException ex)
         {
             Console.WriteLine($"Ошибка при компиляции шейдеров: {ex.Message}");
             return 3;
@@ -231,6 +245,6 @@ internal static class Program
         using var sha = System.Security.Cryptography.SHA256.Create();
         using var stream = File.OpenRead(filePath);
         byte[] hashBytes = sha.ComputeHash(stream);
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        return Convert.ToHexString(hashBytes).ToUpperInvariant();
     }
 }

@@ -4,10 +4,8 @@ using Ignis.Platform.Input;
 
 namespace Ignis.Platform.Windowing;
 
-#pragma warning disable CA1724
 /// <summary>Представляет окно операционной системы.</summary>
 public sealed partial class Window : IDisposable
-#pragma warning restore CA1724
 {
     internal event Action<nint>? RawInputReceived;
     internal event Action? FrameTick;
