@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace Ignis.Bindings.Windows;
 
@@ -12,4 +12,10 @@ internal static partial class VulkanLoader
     internal static partial nint vkGetInstanceProcAddr(
         nint instance,
         string pName);
+
+    internal static nint GetProcAddrPointer()
+    {
+        nint lib = NativeLibrary.Load("vulkan-1.dll");
+        return NativeLibrary.GetExport(lib, "vkGetInstanceProcAddr");
+    }
 }

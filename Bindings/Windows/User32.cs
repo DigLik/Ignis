@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace Ignis.Bindings.Windows;
 
@@ -8,11 +8,21 @@ internal static unsafe partial class User32
     public const int CW_USEDEFAULT = unchecked((int)0x80000000);
     public const int SW_SHOW = 5;
 
+    public const int GWL_STYLE = -16;
+    public const int GWL_EXSTYLE = -20;
+
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_NOACTIVATE = 0x0010;
+
     public const uint WM_DESTROY = 0x0002;
     public const uint WM_SIZE = 0x0005;
     public const uint WM_CLOSE = 0x0010;
     public const uint WM_QUIT = 0x0012;
     public const uint WM_INPUT = 0x00FF;
+    public const uint WM_PAINT = 0x000F;
+    public const uint WM_ENTERSIZEMOVE = 0x0231;
+    public const uint WM_EXITSIZEMOVE = 0x0232;
 
     public const uint PM_REMOVE = 1;
 
@@ -54,8 +64,10 @@ internal static unsafe partial class User32
     {
         public uint cbSize;
         public uint style;
-        public delegate* unmanaged[Stdcall]<
+
+        public delegate* unmanaged<
             nint, uint, nint, nint, nint> lpfnWndProc;
+
         public int cbClsExtra;
         public int cbWndExtra;
         public nint hInstance;
@@ -180,6 +192,31 @@ internal static unsafe partial class User32
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetMessageW(
+        out MSG lpMsg,
+        nint hWnd,
+        uint wMsgFilterMin,
+        uint wMsgFilterMax);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool PostMessageW(
+        nint hWnd,
+        uint msg,
+        nint wParam,
+        nint lParam);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ValidateRect(
+        nint hWnd,
+        nint lpRect);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool TranslateMessage(
         in MSG lpMsg);
 
@@ -257,4 +294,33 @@ internal static unsafe partial class User32
     internal static partial bool GetClientRect(
         nint hWnd,
         out RECT lpRect);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetWindowLongW(nint hWnd, int nIndex);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AdjustWindowRectEx(
+        RECT* lpRect,
+        uint dwStyle,
+        [MarshalAs(UnmanagedType.Bool)] bool bMenu,
+        uint dwExStyle);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetWindowPos(
+        nint hWnd,
+        nint hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetMenu(nint hWnd);
 }

@@ -1,14 +1,12 @@
-﻿using Ignis.Bindings.Vulkan;
+using Ignis.Bindings.Vulkan;
 using Ignis.Bindings.Windows;
 
 namespace Ignis.Platform.Graphics;
 
 public sealed unsafe partial class Renderer
 {
-    private static partial Func<nint, string, nint> GetVulkanLoader()
-    {
-        return VulkanLoader.vkGetInstanceProcAddr;
-    }
+    private static partial nint GetVulkanLoader()
+        => VulkanLoader.GetProcAddrPointer();
 
     private partial nint CreatePlatformSurface(nint instance)
     {

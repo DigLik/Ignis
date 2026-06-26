@@ -1,538 +1,160 @@
-﻿using System.Numerics;
-using System.Runtime.InteropServices;
-
-#if DEBUG
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-#endif
-
+#pragma warning disable CA1003
+using System.Numerics;
 using Ignis.Bindings.Vulkan;
-using Ignis.Core.CoreTypes.Numerics;
+using Ignis.Core.Numerics;
 using Ignis.Core.Graphics;
+using Ignis.Core.Window;
 using Ignis.Platform.Windowing;
 
 namespace Ignis.Platform.Graphics;
 
+/// <summary>Представляет двумерный рендерер на базе графического API Vulkan.</summary>
 public sealed unsafe partial class Renderer : IDisposable
 {
-    private const int MaxFramesInFlight = 3;
+    private VulkanDevice _device = null!;
+    private VulkanSwapchain _swapchain = null!;
+    private VulkanCommandManager _commands = null!;
+    private VulkanAllocator _allocator = null!;
+    private ShapeBatcher _batcher = null!;
+    private VulkanPipeline _pipeline = null!;
+
+    private nint _surface;
+    private uint _imageIndex;
+    private int _currentFrame;
+    private bool _renderPassActive;
+
+    private Vector2 _cameraPosition;
+    private Vector2 _cameraSize = new(100f, 100f);
 
     private readonly Window _window;
+    private VSyncMode _vsync = VSyncMode.On;
 
-    private int _currentFrame;
+    /// <summary>Режим вертикальной синхронизации рендерера.</summary>
+    public VSyncMode VSync
+    {
+        get => _vsync;
+        set
+        {
+            if (_vsync == value) return;
 
-    private nint _instance;
-    private nint _surface;
-    private nint _physicalDevice;
-    private nint _device;
-    private nint _queue;
+            _vsync = value;
 
-    private nint _swapchain;
-    private VkExtent2D _swapchainExtent;
-    private int _swapchainImageFormat;
-    private nint[] _swapchainImages = [];
-    private nint[] _swapchainImageViews = [];
+            if (_device.Device != 0)
+                Resize(_window.Size);
+        }
+    }
 
-    private nint _commandPool;
+    /// <summary>Событие, возникающее на ранней фазе кадра рендеринга (например, для очистки состояний или обновления логики перед основным рендером).</summary>
+    public event Action? EarlyRenderRequested;
 
-    private readonly nint[] _commandBuffers =
-        new nint[MaxFramesInFlight];
-    private readonly nint[] _imageAvailableSemaphores =
-        new nint[MaxFramesInFlight];
-    private readonly nint[] _inFlightFences =
-        new nint[MaxFramesInFlight];
+    /// <summary>Основное событие рендеринга кадра.</summary>
+    public event Action? RenderRequested;
 
-    private nint[] _renderFinishedSemaphores = [];
-    private nint[] _imagesInFlight = [];
+    /// <summary>Событие, возникающее на поздней фазе кадра рендеринга (например, для отрисовки пользовательского интерфейса поверх игровой сцены).</summary>
+    public event Action? LateRenderRequested;
 
-    private uint _imageIndex;
+    /// <summary>Максимальное количество кадров в секунду (FPS). Значения меньше или равные нулю отключают ограничение.</summary>
+    public int MaxFPS { get; set; }
 
-#if DEBUG
-    private nint _debugMessenger;
-#endif
+    /// <summary>Время, прошедшее с момента начала предыдущего кадра, в секундах.</summary>
+    public float DeltaTime { get; private set; }
+    private long _lastFrameTicks;
 
-    private static partial Func<nint, string, nint> GetVulkanLoader();
+    private readonly System.Diagnostics.Stopwatch _stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+    private static partial nint GetVulkanLoader();
     private partial nint CreatePlatformSurface(nint instance);
     private partial void DisposePlatformSpecific();
 
+    /// <summary>Создает и инициализирует новый экземпляр класса <see cref="Renderer"/> для указанного окна.</summary>
+    /// <param name="window">Окно, в котором будет производиться отрисовка.</param>
     public Renderer(Window window)
     {
         _window = window;
+        _window.SizeChanged += OnWindowSizeChanged;
+        _window.ResizeEnded += OnWindowResizeEnded;
         InitGraphics();
+
+        _lastFrameTicks = _stopwatch.ElapsedTicks;
+
+        _window.FrameTick += OnFrameTick;
     }
 
     private void InitGraphics()
     {
-        Vk.LoadGlobalFunctions(GetVulkanLoader());
-
-        CreateInstance();
-        Vk.LoadInstanceFunctions(_instance);
-
-#if DEBUG
-        SetupDebugMessenger();
-#endif
-
-        _surface = CreatePlatformSurface(_instance);
-
-        PickPhysicalDevice();
-        CreateLogicalDevice();
-
-        CreateSwapchain();
-        CreateCommandPool();
-        CreateSyncObjects();
+        _device = new VulkanDevice(GetVulkanLoader());
+        _surface = CreatePlatformSurface(_device.Instance);
+        _swapchain = new VulkanSwapchain(_device, _surface, _window.Size, _vsync, _window.InSizeMove);
+        _commands = new VulkanCommandManager(_device.Device, _swapchain.Images.Length);
+        _allocator = new VulkanAllocator(_device.Device);
+        _batcher = new ShapeBatcher(_device, _allocator);
+        _pipeline = new VulkanPipeline(_device.Device, _swapchain.ImageFormat, _batcher.DescriptorSetLayout);
     }
 
-#if DEBUG
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static uint DebugCallback(
-        int messageSeverity, int messageType,
-        void* pCallbackData, void* pUserData)
-    {
-        var data =
-            (VkDebugUtilsMessengerCallbackDataEXT*)
-            pCallbackData;
-
-        string? message = Marshal.PtrToStringUTF8(
-            (nint)data->pMessage);
-
-        Debug.WriteLine($"[Vulkan] {message}");
-        return Vk.False;
-    }
-
-    private void SetupDebugMessenger()
-    {
-        int msgType =
-            Vk.DebugUtilsMessageTypeGeneralBitExt |
-            Vk.DebugUtilsMessageTypeValidationBitExt |
-            Vk.DebugUtilsMessageTypePerformanceBitExt;
-
-        int msgSeverity =
-            Vk.DebugUtilsMessageSeverityWarningBitExt |
-            Vk.DebugUtilsMessageSeverityErrorBitExt;
-
-        VkDebugUtilsMessengerCreateInfoEXT info = new()
-        {
-            sType =
-                Vk.StructureTypeDebugUtilsMessengerCreateInfoExt,
-            messageSeverity = msgSeverity,
-            messageType = msgType,
-            pfnUserCallback = &DebugCallback
-        };
-
-        nint messenger;
-        if (Vk.CreateDebugUtilsMessengerEXT(
-            _instance, &info, null, &messenger) != 0)
-        {
-            throw new InvalidOperationException("Ошибка DebugMessenger.");
-        }
-        _debugMessenger = messenger;
-    }
-#endif
-
-    private void CreateInstance()
-    {
-        VkApplicationInfo appInfo = new()
-        {
-            sType = Vk.StructureTypeApplicationInfo,
-            apiVersion = Vk.ApiVersion13
-        };
-
-        nint pExt1 = Marshal.StringToCoTaskMemUTF8(
-            "VK_KHR_surface");
-
-        nint pExt2 = Marshal.StringToCoTaskMemUTF8(
-            RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            "VK_KHR_win32_surface" : "VK_KHR_xcb_surface");
-
-#if DEBUG
-        nint pExt3 = Marshal.StringToCoTaskMemUTF8(
-            "VK_EXT_debug_utils");
-
-        nint pLayer = Marshal.StringToCoTaskMemUTF8(
-            "VK_LAYER_KHRONOS_validation");
-
-        byte** extensions = stackalloc byte*[3]
-        {
-            (byte*)pExt1, (byte*)pExt2, (byte*)pExt3
-        };
-
-        byte** layers = stackalloc byte*[1]
-        {
-            (byte*)pLayer
-        };
-#else
-        byte** extensions = stackalloc byte*[2]
-        {
-            (byte*)pExt1, (byte*)pExt2
-        };
-#endif
-
-        VkInstanceCreateInfo createInfo = new()
-        {
-            sType =
-                Vk.StructureTypeInstanceCreateInfo,
-            pApplicationInfo = &appInfo,
-
-#if DEBUG
-            enabledExtensionCount = 3,
-            enabledLayerCount = 1,
-            ppEnabledLayerNames = layers,
-#else
-            enabledExtensionCount = 2,
-            enabledLayerCount = 0,
-            ppEnabledLayerNames = null,
-#endif
-
-            ppEnabledExtensionNames = extensions
-        };
-
-        nint instance;
-        int result = Vk.CreateInstance(
-            &createInfo, null, &instance);
-
-        Marshal.FreeCoTaskMem(pExt1);
-        Marshal.FreeCoTaskMem(pExt2);
-
-#if DEBUG
-        Marshal.FreeCoTaskMem(pExt3);
-        Marshal.FreeCoTaskMem(pLayer);
-#endif
-
-        if (result != Vk.Success)
-            throw new InvalidOperationException("Ошибка VkInstance.");
-
-        _instance = instance;
-    }
-
-    private void PickPhysicalDevice()
-    {
-        uint deviceCount;
-        Vk.EnumeratePhysicalDevices(
-            _instance, &deviceCount, null);
-
-        // CA1508: Анализатор не видит модификации через unmanaged out-параметр
-#pragma warning disable CA1508
-        if (deviceCount == 0)
-        {
-            throw new InvalidOperationException("GPU не найден.");
-        }
-#pragma warning restore CA1508
-
-        nint[] devices = new nint[deviceCount];
-        fixed (nint* pDevices = devices)
-        {
-            Vk.EnumeratePhysicalDevices(
-                _instance, &deviceCount, pDevices);
-        }
-        _physicalDevice = devices[0];
-    }
-
-    private void CreateLogicalDevice()
-    {
-        float queuePriority = 1.0f;
-
-        VkDeviceQueueCreateInfo queueInfo = new()
-        {
-            sType =
-                Vk.StructureTypeDeviceQueueCreateInfo,
-            queueFamilyIndex = 0,
-            queueCount = 1,
-            pQueuePriorities = &queuePriority
-        };
-
-        nint pSwapchainExt = Marshal.StringToCoTaskMemUTF8(
-            "VK_KHR_swapchain");
-
-        byte** deviceExtensions = stackalloc byte*[1]
-        {
-            (byte*)pSwapchainExt
-        };
-
-        VkPhysicalDeviceDynamicRenderingFeatures
-            dynRendering = new()
-            {
-                sType =
-                Vk.StructureTypePhysicalDeviceDynamicRenderingFeatures,
-                dynamicRendering = 1
-            };
-
-        VkPhysicalDeviceSynchronization2Features
-            sync2 = new()
-            {
-                sType =
-                Vk.StructureTypePhysicalDeviceSynchronization2Features,
-                synchronization2 = 1,
-                pNext = &dynRendering
-            };
-
-        VkDeviceCreateInfo createInfo = new()
-        {
-            sType =
-                Vk.StructureTypeDeviceCreateInfo,
-            pNext = &sync2,
-            queueCreateInfoCount = 1,
-            pQueueCreateInfos = &queueInfo,
-            enabledExtensionCount = 1,
-            ppEnabledExtensionNames = deviceExtensions
-        };
-
-        nint device;
-        int result = Vk.CreateDevice(
-            _physicalDevice, &createInfo, null, &device);
-
-        Marshal.FreeCoTaskMem(pSwapchainExt);
-
-        if (result != Vk.Success)
-            throw new InvalidOperationException("Ошибка VkDevice.");
-
-        _device = device;
-        Vk.LoadDeviceFunctions(_device);
-
-        nint queue;
-        Vk.GetDeviceQueue(_device, 0, 0, &queue);
-        _queue = queue;
-    }
-
-    private void CreateSwapchain()
-    {
-        VkSurfaceCapabilitiesKHR caps;
-        Vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(
-            _physicalDevice, _surface, &caps);
-
-        _swapchainImageFormat = Vk.FormatB8G8R8A8Unorm;
-        int colorSpace = Vk.ColorSpaceSrgbNonlinearKhr;
-
-        _swapchainExtent = caps.currentExtent;
-        if (_swapchainExtent.width == uint.MaxValue)
-        {
-            _swapchainExtent.width = (uint)_window.Size.X;
-            _swapchainExtent.height = (uint)_window.Size.Y;
-        }
-
-        uint imageCount = caps.minImageCount + 1;
-        if (caps.maxImageCount > 0 &&
-            imageCount > caps.maxImageCount)
-        {
-            imageCount = caps.maxImageCount;
-        }
-
-        VkSwapchainCreateInfoKHR createInfo = new()
-        {
-            sType =
-                Vk.StructureTypeSwapchainCreateInfoKhr,
-            surface = _surface,
-            minImageCount = imageCount,
-            imageFormat = _swapchainImageFormat,
-            imageColorSpace = colorSpace,
-            imageExtent = _swapchainExtent,
-            imageArrayLayers = 1,
-            imageUsage =
-                Vk.ImageUsageColorAttachmentBit,
-            imageSharingMode =
-                Vk.SharingModeExclusive,
-            preTransform = caps.currentTransform,
-            compositeAlpha =
-                Vk.CompositeAlphaOpaqueBitKhr,
-            presentMode = Vk.PresentModeFifoKhr,
-            clipped = 1
-        };
-
-        nint swapchain;
-        if (Vk.CreateSwapchainKHR(
-            _device, &createInfo, null, &swapchain) != 0)
-        {
-            throw new InvalidOperationException("Ошибка Swapchain.");
-        }
-        _swapchain = swapchain;
-
-        Vk.GetSwapchainImagesKHR(
-            _device, _swapchain, &imageCount, null);
-
-        _swapchainImages = new nint[imageCount];
-        fixed (nint* pImages = _swapchainImages)
-        {
-            Vk.GetSwapchainImagesKHR(
-                _device, _swapchain, &imageCount, pImages);
-        }
-
-        _swapchainImageViews = new nint[imageCount];
-        for (int i = 0; i < imageCount; i++)
-        {
-            VkImageViewCreateInfo viewInfo = new()
-            {
-                sType =
-                    Vk.StructureTypeImageViewCreateInfo,
-                image = _swapchainImages[i],
-                viewType = Vk.ImageViewType2D,
-                format = _swapchainImageFormat
-            };
-
-            viewInfo.subresourceRange.aspectMask =
-                Vk.ImageAspectColorBit;
-            viewInfo.subresourceRange.baseMipLevel = 0;
-            viewInfo.subresourceRange.levelCount = 1;
-            viewInfo.subresourceRange.baseArrayLayer = 0;
-            viewInfo.subresourceRange.layerCount = 1;
-
-            nint imageView;
-            if (Vk.CreateImageView(
-                _device, &viewInfo, null, &imageView) != 0)
-            {
-                throw new InvalidOperationException("Ошибка ImageView.");
-            }
-            _swapchainImageViews[i] = imageView;
-        }
-    }
-
-    private void CreateCommandPool()
-    {
-        VkCommandPoolCreateInfo poolInfo = new()
-        {
-            sType =
-                Vk.StructureTypeCommandPoolCreateInfo,
-            flags = 0x00000002,
-            queueFamilyIndex = 0
-        };
-
-        nint commandPool;
-        if (Vk.CreateCommandPool(
-            _device, &poolInfo, null, &commandPool) != 0)
-        {
-            throw new InvalidOperationException("Ошибка CommandPool.");
-        }
-        _commandPool = commandPool;
-
-        VkCommandBufferAllocateInfo allocInfo = new()
-        {
-            sType =
-                Vk.StructureTypeCommandBufferAllocateInfo,
-            commandPool = _commandPool,
-            level =
-                Vk.CommandBufferLevelPrimary,
-            commandBufferCount = MaxFramesInFlight
-        };
-
-        fixed (nint* pCmdBuffers = _commandBuffers)
-        {
-            if (Vk.AllocateCommandBuffers(
-                _device, &allocInfo, pCmdBuffers) != 0)
-            {
-                throw new InvalidOperationException("Ошибка CmdBuffer.");
-            }
-        }
-    }
-
-    private void CreateSyncObjects()
-    {
-        VkSemaphoreCreateInfo semInfo = new()
-        {
-            sType =
-                Vk.StructureTypeSemaphoreCreateInfo
-        };
-
-        VkFenceCreateInfo fenceInfo = new()
-        {
-            sType =
-                Vk.StructureTypeFenceCreateInfo,
-            flags =
-                Vk.FenceCreateSignaledBit
-        };
-
-        for (int i = 0; i < MaxFramesInFlight; i++)
-        {
-            nint imgAvail, inFlight;
-
-            if (Vk.CreateSemaphore(
-                    _device, &semInfo, null, &imgAvail) != 0 ||
-                Vk.CreateFence(
-                    _device, &fenceInfo, null, &inFlight) != 0)
-            {
-                throw new InvalidOperationException("Ошибка CPU Sync.");
-            }
-
-            _imageAvailableSemaphores[i] = imgAvail;
-            _inFlightFences[i] = inFlight;
-        }
-
-        int imgCount = _swapchainImages.Length;
-        _renderFinishedSemaphores = new nint[imgCount];
-        _imagesInFlight = new nint[imgCount];
-
-        for (int i = 0; i < imgCount; i++)
-        {
-            nint renderFin;
-            if (Vk.CreateSemaphore(
-                _device, &semInfo, null, &renderFin) != 0)
-            {
-                throw new InvalidOperationException("Ошибка GPU Sync.");
-            }
-
-            _renderFinishedSemaphores[i] = renderFin;
-            _imagesInFlight[i] = 0;
-        }
-    }
-
+    /// <summary>Начинает запись команд для нового кадра.</summary>
+    /// <returns>True, если кадр успешно начат и готов к отрисовке, иначе false.</returns>
     public bool BeginFrame()
     {
-        nint fence = _inFlightFences[_currentFrame];
-        Vk.WaitForFences(
-            _device, 1, &fence, 1, ulong.MaxValue);
+        _renderPassActive = false;
+        nint fence = _commands.GetInFlightFence(_currentFrame);
+        Vk.WaitForFences(_device.Device, 1, &fence, 1, ulong.MaxValue);
 
         uint imageIndex;
         int result = Vk.AcquireNextImageKHR(
-            _device, _swapchain, ulong.MaxValue,
-            _imageAvailableSemaphores[_currentFrame],
+            _device.Device, _swapchain.Handle, ulong.MaxValue,
+            _commands.GetImageAvailableSemaphore(_currentFrame),
             0, &imageIndex);
 
-        if (result < 0) return false;
-        _imageIndex = imageIndex;
-
-        if (_imagesInFlight[_imageIndex] != 0)
+        if (result == Vk.ErrorOutOfDateKhr)
         {
-            nint imgFence = _imagesInFlight[_imageIndex];
-            Vk.WaitForFences(
-                _device, 1, &imgFence, 1, ulong.MaxValue);
+            Resize(_window.Size);
+            return false;
+        }
+        else if (result != Vk.Success && result != Vk.SuboptimalKhr)
+        {
+            return false;
         }
 
-        _imagesInFlight[_imageIndex] = fence;
+        _imageIndex = imageIndex;
 
-        Vk.ResetFences(_device, 1, &fence);
+        nint imgFence = _commands.GetImageInFlight((int)_imageIndex);
+        if (imgFence != 0)
+            Vk.WaitForFences(_device.Device, 1, &imgFence, 1, ulong.MaxValue);
 
-        nint cmdBuf = _commandBuffers[_currentFrame];
+        _commands.GetImageInFlight((int)_imageIndex) = fence;
+        Vk.ResetFences(_device.Device, 1, &fence);
+
+        nint cmdBuf = _commands.GetCommandBuffer(_currentFrame);
         Vk.ResetCommandBuffer(cmdBuf, 0);
 
         VkCommandBufferBeginInfo beginInfo = new()
         {
-            sType =
-                Vk.StructureTypeCommandBufferBeginInfo
+            sType = Vk.StructureTypeCommandBufferBeginInfo
         };
 
         Vk.BeginCommandBuffer(cmdBuf, &beginInfo);
         return true;
     }
 
+    /// <summary>Очищает фон кадра указанным цветом.</summary>
+    /// <param name="color">Цвет очистки.</param>
+    /// <returns>True, если очистка прошла успешно, иначе false.</returns>
     public bool ClearBackground(Color color)
     {
-        nint cmdBuf = _commandBuffers[_currentFrame];
+        nint cmdBuf = _commands.GetCommandBuffer(_currentFrame);
 
         VkImageMemoryBarrier2 barrier = new()
         {
-            sType =
-                Vk.StructureTypeImageMemoryBarrier2,
-            srcStageMask =
-                Vk.PipelineStage2TopOfPipeBit,
+            sType = Vk.StructureTypeImageMemoryBarrier2,
+            srcStageMask = Vk.PipelineStage2TopOfPipeBit,
             srcAccessMask = 0,
-            dstStageMask =
-                Vk.PipelineStage2ColorAttachmentOutputBit,
-            dstAccessMask =
-                Vk.Access2ColorAttachmentWriteBit,
+            dstStageMask = Vk.PipelineStage2ColorAttachmentOutputBit,
+            dstAccessMask = Vk.Access2ColorAttachmentWriteBit,
             oldLayout = Vk.ImageLayoutUndefined,
-            newLayout =
-                Vk.ImageLayoutColorAttachmentOptimal,
-            image = _swapchainImages[_imageIndex]
+            newLayout = Vk.ImageLayoutColorAttachmentOptimal,
+            image = _swapchain.Images[_imageIndex]
         };
-        barrier.subresourceRange.aspectMask =
-            Vk.ImageAspectColorBit;
+        barrier.subresourceRange.aspectMask = Vk.ImageAspectColorBit;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.layerCount = 1;
 
@@ -553,59 +175,60 @@ public sealed unsafe partial class Renderer : IDisposable
 
         VkRenderingAttachmentInfo colorAttachment = new()
         {
-            sType =
-                Vk.StructureTypeRenderingAttachmentInfo,
-            imageView =
-                _swapchainImageViews[_imageIndex],
-            imageLayout =
-                Vk.ImageLayoutColorAttachmentOptimal,
-            loadOp =
-                Vk.AttachmentLoadOpClear,
-            storeOp =
-                Vk.AttachmentStoreOpStore,
+            sType = Vk.StructureTypeRenderingAttachmentInfo,
+            imageView = _swapchain.ImageViews[_imageIndex],
+            imageLayout = Vk.ImageLayoutColorAttachmentOptimal,
+            loadOp = Vk.AttachmentLoadOpClear,
+            storeOp = Vk.AttachmentStoreOpStore,
             clearValue = clearValue
         };
 
         VkRenderingInfo renderingInfo = new()
         {
-            sType =
-                Vk.StructureTypeRenderingInfo
+            sType = Vk.StructureTypeRenderingInfo
         };
-        renderingInfo.renderArea.extent = _swapchainExtent;
+        renderingInfo.renderArea.extent = _swapchain.Extent;
         renderingInfo.layerCount = 1;
         renderingInfo.colorAttachmentCount = 1;
         renderingInfo.pColorAttachments = &colorAttachment;
 
-        Vk.CmdBeginRendering(cmdBuf, &renderingInfo);
+        if (!_renderPassActive)
+        {
+            _batcher.UploadFontIfNeeded(cmdBuf);
+
+            Vk.CmdBeginRendering(cmdBuf, &renderingInfo);
+            _renderPassActive = true;
+        }
 
         return true;
     }
 
+    /// <summary>Завершает отрисовку кадра, отправляя буфер команд на выполнение графическому процессору и выводя результат на экран.</summary>
     public void EndFrame()
     {
-        nint cmdBuf = _commandBuffers[_currentFrame];
+        nint cmdBuf = _commands.GetCommandBuffer(_currentFrame);
 
-        Vk.CmdEndRendering(cmdBuf);
+        _batcher.FlushAndDraw(cmdBuf, _currentFrame, _cameraPosition, _cameraSize, _swapchain.Extent,
+            _pipeline.Pipeline, _pipeline.PipelineLayout);
+
+        if (_renderPassActive)
+        {
+            Vk.CmdEndRendering(cmdBuf);
+            _renderPassActive = false;
+        }
 
         VkImageMemoryBarrier2 barrier = new()
         {
-            sType =
-                Vk.StructureTypeImageMemoryBarrier2,
-            srcStageMask =
-                Vk.PipelineStage2ColorAttachmentOutputBit,
-            srcAccessMask =
-                Vk.Access2ColorAttachmentWriteBit,
-            dstStageMask =
-                Vk.PipelineStage2BottomOfPipeBit,
+            sType = Vk.StructureTypeImageMemoryBarrier2,
+            srcStageMask = Vk.PipelineStage2ColorAttachmentOutputBit,
+            srcAccessMask = Vk.Access2ColorAttachmentWriteBit,
+            dstStageMask = Vk.PipelineStage2BottomOfPipeBit,
             dstAccessMask = 0,
-            oldLayout =
-                Vk.ImageLayoutColorAttachmentOptimal,
-            newLayout =
-                Vk.ImageLayoutPresentSrcKhr,
-            image = _swapchainImages[_imageIndex]
+            oldLayout = Vk.ImageLayoutColorAttachmentOptimal,
+            newLayout = Vk.ImageLayoutPresentSrcKhr,
+            image = _swapchain.Images[_imageIndex]
         };
-        barrier.subresourceRange.aspectMask =
-            Vk.ImageAspectColorBit;
+        barrier.subresourceRange.aspectMask = Vk.ImageAspectColorBit;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.layerCount = 1;
 
@@ -617,43 +240,34 @@ public sealed unsafe partial class Renderer : IDisposable
         };
 
         Vk.CmdPipelineBarrier2(cmdBuf, &depInfo);
-
         Vk.EndCommandBuffer(cmdBuf);
 
-        nint waitSem =
-            _imageAvailableSemaphores[_currentFrame];
-        nint signalSem =
-            _renderFinishedSemaphores[_imageIndex];
+        nint waitSem = _commands.GetImageAvailableSemaphore(_currentFrame);
+        nint signalSem = _commands.GetRenderFinishedSemaphore((int)_imageIndex);
 
         VkCommandBufferSubmitInfo cmdInfo = new()
         {
-            sType =
-                Vk.StructureTypeCommandBufferSubmitInfo,
+            sType = Vk.StructureTypeCommandBufferSubmitInfo,
             commandBuffer = cmdBuf
         };
 
         VkSemaphoreSubmitInfo waitInfo = new()
         {
-            sType =
-                Vk.StructureTypeSemaphoreSubmitInfo,
+            sType = Vk.StructureTypeSemaphoreSubmitInfo,
             semaphore = waitSem,
-            stageMask =
-                Vk.PipelineStage2ColorAttachmentOutputBit
+            stageMask = Vk.PipelineStage2ColorAttachmentOutputBit
         };
 
         VkSemaphoreSubmitInfo signalInfo = new()
         {
-            sType =
-                Vk.StructureTypeSemaphoreSubmitInfo,
+            sType = Vk.StructureTypeSemaphoreSubmitInfo,
             semaphore = signalSem,
-            stageMask =
-                Vk.PipelineStage2ColorAttachmentOutputBit
+            stageMask = Vk.PipelineStage2ColorAttachmentOutputBit
         };
 
         VkSubmitInfo2 submitInfo = new()
         {
-            sType =
-                Vk.StructureTypeSubmitInfo2,
+            sType = Vk.StructureTypeSubmitInfo2,
             waitSemaphoreInfoCount = 1,
             pWaitSemaphoreInfos = &waitInfo,
             commandBufferInfoCount = 1,
@@ -662,105 +276,119 @@ public sealed unsafe partial class Renderer : IDisposable
             pSignalSemaphoreInfos = &signalInfo
         };
 
-        nint fence = _inFlightFences[_currentFrame];
+        nint fence = _commands.GetInFlightFence(_currentFrame);
+        Vk.QueueSubmit2(_device.Queue, 1, &submitInfo, fence);
 
-        Vk.QueueSubmit2(_queue, 1, &submitInfo, fence);
-
-        nint swapchain = _swapchain;
+        nint rawSwapchain = _swapchain.Handle;
         uint imgIdx = _imageIndex;
 
         VkPresentInfoKHR presentInfo = new()
         {
-            sType =
-                Vk.StructureTypePresentInfoKhr,
+            sType = Vk.StructureTypePresentInfoKhr,
             waitSemaphoreCount = 1,
             pWaitSemaphores = &signalSem,
             swapchainCount = 1,
-            pSwapchains = &swapchain,
+            pSwapchains = &rawSwapchain,
             pImageIndices = &imgIdx
         };
 
-        Vk.QueuePresentKHR(_queue, &presentInfo);
+        int presentRes = Vk.QueuePresentKHR(_device.Queue, &presentInfo);
 
-        _currentFrame =
-            (_currentFrame + 1) % MaxFramesInFlight;
+        if (presentRes == Vk.ErrorOutOfDateKhr || presentRes == Vk.SuboptimalKhr)
+            Resize(_window.Size);
+
+        _currentFrame = (_currentFrame + 1) % RenderConfig.MaxFramesInFlight;
     }
 
-#pragma warning disable CA1822, IDE0060
-    public void DrawCircle(Vector2 p, float r, Color c) { }
-    public void DrawEllipse(Vector2 p, Vector2 s, float a, Color c) { }
-    public void DrawRectangle(Vector2 p, Vector2 s, float a, Color c) { }
-    public void DrawLine(Vector2 p1, Vector2 p2, float t, Color c) { }
-    public void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color c) { }
-    public void DrawPolygon(ReadOnlySpan<Vector2> p, Color c) { }
-    public void DrawText(string t, Vector2 p, float s, Color c) { }
-    public void UpdateCamera(Vector2 p, Vector2 b) { }
-    public void Resize(Vector2Int newSize) { }
-#pragma warning restore CA1822, IDE0060
+    private void OnFrameTick()
+    {
+        if (_window.ShouldClose) return;
 
+        if (_window.Size.X <= 0 || _window.Size.Y <= 0)
+        {
+            Thread.Sleep(1);
+            return;
+        }
+
+        long frameStartTime = _stopwatch.ElapsedTicks;
+        DeltaTime = (float)(frameStartTime - _lastFrameTicks) / System.Diagnostics.Stopwatch.Frequency;
+        _lastFrameTicks = frameStartTime;
+
+        foreach (var device in _window.InputDevices)
+            device.SnapshotFrame();
+
+        if (BeginFrame())
+        {
+            EarlyRenderRequested?.Invoke();
+            RenderRequested?.Invoke();
+            LateRenderRequested?.Invoke();
+            EndFrame();
+        }
+
+        if (MaxFPS > 0)
+        {
+            long targetTicks = System.Diagnostics.Stopwatch.Frequency / MaxFPS;
+            while (true)
+            {
+                long elapsed = _stopwatch.ElapsedTicks - frameStartTime;
+                long remainingTicks = targetTicks - elapsed;
+
+                if (remainingTicks <= 0) break;
+
+                long remainingMs = remainingTicks * 1000 / System.Diagnostics.Stopwatch.Frequency;
+                if (remainingMs > 1)
+                    Thread.Sleep((int)(remainingMs - 1));
+                else
+                    Thread.SpinWait(1);
+            }
+        }
+    }
+
+    private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (e.Size.X > 0 && e.Size.Y > 0)
+            Resize(e.Size);
+    }
+
+    private void OnWindowResizeEnded(object? sender, EventArgs e) { }
+
+    /// <summary>Изменяет размер внутренних ресурсов рендеринга (swapchain и др.) в соответствии с новым размером окна.</summary>
+    /// <param name="newSize">Новый размер клиентской области окна.</param>
+    public void Resize(Vector2Int newSize)
+    {
+        if (newSize.X <= 0 || newSize.Y <= 0) return;
+        if (_device.Device == 0) return;
+
+        _swapchain.Recreate(newSize, _vsync, _window.InSizeMove);
+        _commands.RecreateSyncObjects(_swapchain.Images.Length);
+    }
+
+    /// <summary>Освобождает все ресурсы, используемые рендерером.</summary>
     public void Dispose()
     {
-        if (_device != 0)
+        _window.FrameTick -= OnFrameTick;
+        _window.SizeChanged -= OnWindowSizeChanged;
+        _window.ResizeEnded -= OnWindowResizeEnded;
+
+        if (_device.Device != 0)
         {
-            Vk.DeviceWaitIdle(_device);
+            Vk.DeviceWaitIdle(_device.Device);
 
-            for (int i = 0; i < MaxFramesInFlight; i++)
+            _pipeline.Dispose();
+            _batcher.Dispose();
+            _allocator.Dispose();
+            _commands.Dispose();
+            _swapchain.Dispose();
+
+            if (_surface != 0)
             {
-                if (_imageAvailableSemaphores[i] != 0)
-                    Vk.DestroySemaphore(
-                        _device,
-                        _imageAvailableSemaphores[i], null);
-
-                if (_inFlightFences[i] != 0)
-                    Vk.DestroyFence(
-                        _device, _inFlightFences[i], null);
+                Vk.DestroySurfaceKHR(_device.Instance, _surface, null);
+                _surface = 0;
             }
 
-            foreach (nint sem in _renderFinishedSemaphores)
-            {
-                if (sem != 0)
-                    Vk.DestroySemaphore(_device, sem, null);
-            }
-
-            Vk.DestroyCommandPool(_device, _commandPool, null);
-
-            foreach (nint view in _swapchainImageViews)
-            {
-                if (view != 0)
-                    Vk.DestroyImageView(_device, view, null);
-            }
-
-            if (_swapchain != 0)
-                Vk.DestroySwapchainKHR(
-                    _device, _swapchain, null);
-
-            Vk.DestroyDevice(_device, null);
-            _device = 0;
-        }
-
-#if DEBUG
-        if (_debugMessenger != 0)
-        {
-            Vk.DestroyDebugUtilsMessengerEXT(
-                _instance, _debugMessenger, null);
-            _debugMessenger = 0;
-        }
-#endif
-
-        if (_surface != 0)
-        {
-            Vk.DestroySurfaceKHR(_instance, _surface, null);
-            _surface = 0;
+            _device.Dispose();
         }
 
         DisposePlatformSpecific();
-
-        if (_instance != 0)
-        {
-            Vk.DestroyInstance(_instance, null);
-            _instance = 0;
-        }
-
-        GC.SuppressFinalize(this);
     }
 }

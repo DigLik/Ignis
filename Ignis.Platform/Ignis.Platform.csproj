@@ -1,14 +1,53 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<PackageId>DigLik.Ignis</PackageId>
+		<Version>0.0.2</Version>
+		<Authors>DigLik</Authors>
+		<Description>Graphics and windowing platform abstraction for Ignis.</Description>
+		<PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/DigLik/Ignis</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+		<TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeProjectReferencesInPackage</TargetsForTfmSpecificBuildOutput>
+	</PropertyGroup>
+
 	<ItemGroup>
-		<ProjectReference Include="..\Ignis.Core\Ignis.Core.csproj" />
-		<ProjectReference Include="..\Bindings\Vulkan\Vulkan.csproj" />
+		<None Include="..\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Ignis.Core\Ignis.Core.csproj" PrivateAssets="All" />
+		<ProjectReference Include="..\Bindings\Vulkan\Vulkan.csproj" PrivateAssets="All" />
 	</ItemGroup>
 
 	<ItemGroup Condition="$([MSBuild]::IsOsPlatform('Windows'))">
-		<ProjectReference Include="..\Bindings\Windows\Windows.csproj" />
+		<ProjectReference Include="..\Bindings\Windows\Windows.csproj" PrivateAssets="All" />
 	</ItemGroup>
 
 	<ItemGroup Condition="!$([MSBuild]::IsOsPlatform('Windows'))">
-		<Compile Remove="Windows\**\*.cs" />
+		<Compile Remove="Win32\**\*.cs" />
 	</ItemGroup>
+
+	<Target Name="CompileShaders" BeforeTargets="BeforeBuild"
+			Inputs="Shaders\**\*.*"
+			Outputs="Graphics\Shaders.g.cs">
+		<MSBuild Projects="..\Ignis.ShaderCompiler\Ignis.ShaderCompiler.csproj" Targets="Build" />
+		<Exec Command="dotnet run --project ..\Ignis.ShaderCompiler\Ignis.ShaderCompiler.csproj -- &quot;$(ProjectDir.TrimEnd('\'))&quot;" />
+	</Target>
+
+	<Target Name="IncludeProjectReferencesInPackage" DependsOnTargets="ResolveReferences">
+		<ItemGroup>
+			<!-- Находим все DLL-файлы проектных ссылок -->
+			<_ProjectDlls Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" Condition="'%(Extension)' == '.dll'" />
+			
+			<!-- Формируем пути для соответствующих XML-файлов и проверяем их существование -->
+			<_ProjectXmls Include="@(_ProjectDlls->ClearMetadata()->Replace('.dll', '.xml'))" Condition="Exists('%(FullPath)')" />
+
+			<!-- Добавляем DLL и XML в пакет -->
+			<BuildOutputInPackage Include="@(_ProjectDlls)" />
+			<BuildOutputInPackage Include="@(_ProjectXmls)" />
+		</ItemGroup>
+	</Target>
 </Project>

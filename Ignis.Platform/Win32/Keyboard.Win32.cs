@@ -1,4 +1,5 @@
-﻿using Ignis.Bindings.Windows;
+using Ignis.Bindings.Windows;
+using Ignis.Core.Input;
 
 namespace Ignis.Platform.Input;
 
@@ -41,15 +42,33 @@ public sealed unsafe partial class Keyboard
                 if (code is >= 0 and < MaxKeys)
                 {
                     bool isUp = (kb->Flags & User32.RI_KEY_BREAK) != 0;
-                    _currentStates[code] = isUp ? (byte)0 : (byte)1;
+                    bool wasDown;
+
+                    wasDown = _rawCurrentStates[code] == 1;
+                    _rawCurrentStates[code] = isUp ? (byte)0 : (byte)1;
+
+                    if (isUp)
+                    {
+                        if (wasDown)
+                        {
+                            KeyReleased?.Invoke(new Key(code));
+                        }
+                    }
+                    else
+                    {
+                        if (!wasDown)
+                        {
+                            KeyPressed?.Invoke(new Key(code));
+                        }
+                        else
+                        {
+                            KeyDown?.Invoke(new Key(code));
+                        }
+                    }
                 }
             }
         }
     }
-
-#pragma warning disable CA1822
-    private partial void UpdatePlatform() { }
-#pragma warning restore CA1822
 
     private partial void DisposePlatform()
         => _window.RawInputReceived -= ProcessRawInput;

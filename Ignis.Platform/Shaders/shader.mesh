@@ -1,0 +1,232 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+
+layout(local_size_x = 32) in;
+layout(triangles) out;
+layout(max_vertices = 4, max_primitives = 2) out;
+
+struct Shape {
+    int type;      // 0: Triangle, 1: Rectangle, 2: Circle, 3: Ellipse, 4: Line
+    vec2 p1;       // position, center, or start point
+    vec2 p2;       // size, radius, or end point
+    float angle;
+    float thickness;
+    vec4 color;
+};
+
+layout(std430, binding = 0) readonly buffer ShapeBuffer {
+    Shape shapes[];
+};
+
+layout(push_constant) uniform PushConstants {
+    vec2 cameraPos;
+    vec2 cameraSize;
+    uint totalShapes;
+} push;
+
+struct TaskPayload {
+    uint visibleIndices[32];
+};
+
+taskPayloadSharedEXT TaskPayload payload;
+
+layout(location = 0) out FragmentData {
+    flat int type;
+    vec2 localPos;
+    vec2 sizeOrParams;
+    vec2 p1;
+    vec2 p2;
+    vec2 p3;
+    vec2 worldPos;
+    flat vec4 color;
+} outData[];
+
+void main() {
+    uint localId = gl_LocalInvocationID.x;
+    uint shapeIndex = payload.visibleIndices[gl_WorkGroupID.x];
+    Shape s = shapes[shapeIndex];
+
+    SetMeshOutputsEXT(4, 2);
+
+    if (s.type == 0) { // Triangle
+        vec2 p0 = s.p1;
+        vec2 p1 = s.p2;
+        vec2 p2 = vec2(s.angle, s.thickness);
+
+        float minX = min(p0.x, min(p1.x, p2.x)) - 1.5;
+        float maxX = max(p0.x, max(p1.x, p2.x)) + 1.5;
+        float minY = min(p0.y, min(p1.y, p2.y)) - 1.5;
+        float maxY = max(p0.y, max(p1.y, p2.y)) + 1.5;
+
+        vec2 pos[4];
+        pos[0] = vec2(minX, minY);
+        pos[1] = vec2(maxX, minY);
+        pos[2] = vec2(maxX, maxY);
+        pos[3] = vec2(minX, maxY);
+
+        for (uint i = 0; i < 4; ++i) {
+            if (localId == i) {
+                gl_MeshVerticesEXT[i].gl_Position = vec4(
+                    (pos[i].x - push.cameraPos.x) * 2.0 / push.cameraSize.x,
+                    -((pos[i].y - push.cameraPos.y) * 2.0 / push.cameraSize.y),
+                    0.0,
+                    1.0
+                );
+
+                outData[i].type = s.type;
+                outData[i].localPos = vec2(0.0);
+                outData[i].sizeOrParams = vec2(0.0);
+                outData[i].p1 = p0;
+                outData[i].p2 = p1;
+                outData[i].p3 = p2;
+                outData[i].worldPos = pos[i];
+                outData[i].color = s.color;
+            }
+        }
+    }
+    else if (s.type == 1 || s.type == 5) { // Rectangle or Character
+        vec2 halfSize = s.p2 * 0.5 + vec2(1.5);
+        vec2 localCoords[4];
+        localCoords[0] = vec2(-halfSize.x, -halfSize.y);
+        localCoords[1] = vec2(halfSize.x, -halfSize.y);
+        localCoords[2] = vec2(halfSize.x, halfSize.y);
+        localCoords[3] = vec2(-halfSize.x, halfSize.y);
+
+        float cosA = (s.type == 5) ? 1.0 : cos(s.angle);
+        float sinA = (s.type == 5) ? 0.0 : sin(s.angle);
+
+        for (uint i = 0; i < 4; ++i) {
+            if (localId == i) {
+                vec2 rotPos = vec2(
+                    localCoords[i].x * cosA - localCoords[i].y * sinA,
+                    localCoords[i].x * sinA + localCoords[i].y * cosA
+                );
+                vec2 pos = s.p1 + rotPos;
+
+                gl_MeshVerticesEXT[i].gl_Position = vec4(
+                    (pos.x - push.cameraPos.x) * 2.0 / push.cameraSize.x,
+                    -((pos.y - push.cameraPos.y) * 2.0 / push.cameraSize.y),
+                    0.0,
+                    1.0
+                );
+
+                outData[i].type = s.type;
+                outData[i].localPos = localCoords[i];
+                outData[i].sizeOrParams = s.p2 * 0.5;
+                outData[i].p1 = s.p1;
+                outData[i].p2 = s.p2;
+                outData[i].p3 = vec2(s.angle, s.thickness);
+                outData[i].worldPos = pos;
+                outData[i].color = s.color;
+            }
+        }
+    }
+    else if (s.type == 2) { // Circle
+        float r = s.thickness + 1.5;
+        vec2 localCoords[4];
+        localCoords[0] = vec2(-r, -r);
+        localCoords[1] = vec2(r, -r);
+        localCoords[2] = vec2(r, r);
+        localCoords[3] = vec2(-r, r);
+
+        for (uint i = 0; i < 4; ++i) {
+            if (localId == i) {
+                vec2 pos = s.p1 + localCoords[i];
+
+                gl_MeshVerticesEXT[i].gl_Position = vec4(
+                    (pos.x - push.cameraPos.x) * 2.0 / push.cameraSize.x,
+                    -((pos.y - push.cameraPos.y) * 2.0 / push.cameraSize.y),
+                    0.0,
+                    1.0
+                );
+
+                outData[i].type = s.type;
+                outData[i].localPos = localCoords[i];
+                outData[i].sizeOrParams = vec2(s.thickness, 0.0);
+                outData[i].p1 = s.p1;
+                outData[i].p2 = vec2(0.0);
+                outData[i].p3 = vec2(0.0);
+                outData[i].worldPos = pos;
+                outData[i].color = s.color;
+            }
+        }
+    }
+    else if (s.type == 3) { // Ellipse
+        float rx = s.p2.x * 0.5 + 1.5;
+        float ry = s.p2.y * 0.5 + 1.5;
+        vec2 localCoords[4];
+        localCoords[0] = vec2(-rx, -ry);
+        localCoords[1] = vec2(rx, -ry);
+        localCoords[2] = vec2(rx, ry);
+        localCoords[3] = vec2(-rx, ry);
+
+        float cosA = cos(s.angle);
+        float sinA = sin(s.angle);
+
+        for (uint i = 0; i < 4; ++i) {
+            if (localId == i) {
+                vec2 rotPos = vec2(
+                    localCoords[i].x * cosA - localCoords[i].y * sinA,
+                    localCoords[i].x * sinA + localCoords[i].y * cosA
+                );
+                vec2 pos = s.p1 + rotPos;
+
+                gl_MeshVerticesEXT[i].gl_Position = vec4(
+                    (pos.x - push.cameraPos.x) * 2.0 / push.cameraSize.x,
+                    -((pos.y - push.cameraPos.y) * 2.0 / push.cameraSize.y),
+                    0.0,
+                    1.0
+                );
+
+                outData[i].type = s.type;
+                outData[i].localPos = localCoords[i];
+                outData[i].sizeOrParams = s.p2 * 0.5;
+                outData[i].p1 = s.p1;
+                outData[i].p2 = s.p2;
+                outData[i].p3 = vec2(0.0);
+                outData[i].worldPos = pos;
+                outData[i].color = s.color;
+            }
+        }
+    }
+    else if (s.type == 4) { // Line
+        vec2 dir = s.p2 - s.p1;
+        float len = length(dir);
+        dir = (len > 0.0001) ? (dir / len) : vec2(1.0, 0.0);
+        vec2 normal = vec2(-dir.y, dir.x);
+
+        float halfT = s.thickness * 0.5 + 1.5;
+        float ext = 1.5;
+
+        vec2 pos[4];
+        pos[0] = s.p1 - dir * ext + normal * halfT;
+        pos[1] = s.p1 - dir * ext - normal * halfT;
+        pos[2] = s.p2 + dir * ext - normal * halfT;
+        pos[3] = s.p2 + dir * ext + normal * halfT;
+
+        for (uint i = 0; i < 4; ++i) {
+            if (localId == i) {
+                gl_MeshVerticesEXT[i].gl_Position = vec4(
+                    (pos[i].x - push.cameraPos.x) * 2.0 / push.cameraSize.x,
+                    -((pos[i].y - push.cameraPos.y) * 2.0 / push.cameraSize.y),
+                    0.0,
+                    1.0
+                );
+
+                outData[i].type = s.type;
+                outData[i].localPos = vec2(0.0);
+                outData[i].sizeOrParams = vec2(s.thickness, 0.0);
+                outData[i].p1 = s.p1;
+                outData[i].p2 = s.p2;
+                outData[i].p3 = vec2(0.0);
+                outData[i].worldPos = pos[i];
+                outData[i].color = s.color;
+            }
+        }
+    }
+
+    if (localId == 0) {
+        gl_PrimitiveTriangleIndicesEXT[0] = uvec3(0, 1, 2);
+        gl_PrimitiveTriangleIndicesEXT[1] = uvec3(0, 2, 3);
+    }
+}

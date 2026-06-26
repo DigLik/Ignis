@@ -1,0 +1,120 @@
+#version 450
+#extension GL_EXT_mesh_shader : require
+
+layout(local_size_x = 32) in;
+
+struct Shape {
+    int type;      // 0: Triangle, 1: Rectangle, 2: Circle, 3: Ellipse, 4: Line
+    vec2 p1;       // position, center, or start point
+    vec2 p2;       // size, radius, or end point
+    float angle;
+    float thickness;
+    vec4 color;
+};
+
+layout(std430, binding = 0) readonly buffer ShapeBuffer {
+    Shape shapes[];
+};
+
+layout(push_constant) uniform PushConstants {
+    vec2 cameraPos;
+    vec2 cameraSize;
+    uint totalShapes;
+} push;
+
+struct TaskPayload {
+    uint visibleIndices[32];
+};
+
+taskPayloadSharedEXT TaskPayload payload;
+
+shared uint numVisible;
+shared uint visibleIndices[32];
+
+bool checkFrustumCulling(Shape s) {
+    float minX, maxX, minY, maxY;
+    
+    if (s.type == 0) { // Triangle
+        minX = min(s.p1.x, min(s.p2.x, s.angle));
+        maxX = max(s.p1.x, max(s.p2.x, s.angle));
+        minY = min(s.p1.y, min(s.p2.y, s.thickness));
+        maxY = max(s.p1.y, max(s.p2.y, s.thickness));
+    }
+    else if (s.type == 1 || s.type == 5) { // Rectangle or Character
+        float ex = s.p2.x * 0.5;
+        float ey = s.p2.y * 0.5;
+        float c = cos(s.angle);
+        float s_val = sin(s.angle);
+        float hX = ex * abs(c) + ey * abs(s_val);
+        float hY = ex * abs(s_val) + ey * abs(c);
+        minX = s.p1.x - hX;
+        maxX = s.p1.x + hX;
+        minY = s.p1.y - hY;
+        maxY = s.p1.y + hY;
+    }
+    else if (s.type == 2) { // Circle
+        float r = s.thickness;
+        minX = s.p1.x - r;
+        maxX = s.p1.x + r;
+        minY = s.p1.y - r;
+        maxY = s.p1.y + r;
+    }
+    else if (s.type == 3) { // Ellipse
+        float rx = s.p2.x * 0.5;
+        float ry = s.p2.y * 0.5;
+        float c = cos(s.angle);
+        float s_val = sin(s.angle);
+        float hX = sqrt(rx*rx * c*c + ry*ry * s_val*s_val);
+        float hY = sqrt(rx*rx * s_val*s_val + ry*ry * c*c);
+        minX = s.p1.x - hX;
+        maxX = s.p1.x + hX;
+        minY = s.p1.y - hY;
+        maxY = s.p1.y + hY;
+    }
+    else if (s.type == 4) { // Line
+        float r = s.thickness * 0.5;
+        minX = min(s.p1.x, s.p2.x) - r;
+        maxX = max(s.p1.x, s.p2.x) + r;
+        minY = min(s.p1.y, s.p2.y) - r;
+        maxY = max(s.p1.y, s.p2.y) + r;
+    }
+    else {
+        return false;
+    }
+
+    // Check overlap with camera view frustum (cameraPos is center)
+    vec2 halfSize = push.cameraSize * 0.5;
+    return (minX <= push.cameraPos.x + halfSize.x) && 
+           (maxX >= push.cameraPos.x - halfSize.x) && 
+           (minY <= push.cameraPos.y + halfSize.y) && 
+           (maxY >= push.cameraPos.y - halfSize.y);
+}
+
+void main() {
+    uint localId = gl_LocalInvocationID.x;
+    uint globalId = gl_WorkGroupID.x * 32 + localId;
+
+    if (localId == 0) {
+        numVisible = 0;
+    }
+    barrier();
+
+    bool visible = false;
+    if (globalId < push.totalShapes) {
+        Shape s = shapes[globalId];
+        visible = checkFrustumCulling(s);
+    }
+
+    if (visible) {
+        uint index = atomicAdd(numVisible, 1);
+        visibleIndices[index] = globalId;
+    }
+    barrier();
+
+    if (localId == 0) {
+        for (uint i = 0; i < numVisible; i++) {
+            payload.visibleIndices[i] = visibleIndices[i];
+        }
+        EmitMeshTasksEXT(numVisible, 1, 1);
+    }
+}
