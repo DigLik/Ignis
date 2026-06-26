@@ -294,7 +294,6 @@ internal sealed unsafe class ShapeBatcher : IDisposable
         uint desiredProperties = Vk.MemoryPropertyHostVisibleBit | Vk.MemoryPropertyHostCoherentBit | Vk.MemoryPropertyDeviceLocalBit;
         uint fallbackProperties = Vk.MemoryPropertyHostVisibleBit | Vk.MemoryPropertyHostCoherentBit;
 
-#pragma warning disable CA1303 // Локализация отладочных сообщений не требуется
         if (!_device.TryFindMemoryType(memReq.memoryTypeBits, desiredProperties, out uint memType))
         {
             memType = _device.FindMemoryType(memReq.memoryTypeBits, fallbackProperties);
@@ -304,7 +303,6 @@ internal sealed unsafe class ShapeBatcher : IDisposable
         {
             Console.WriteLine("[Vulkan] Resizable BAR АКТИВЕН для RingBuffer.");
         }
-#pragma warning restore CA1303
 
         _ringBufferAllocation = _allocator.Allocate(memReq.size, memReq.alignment, memType, hostVisible: true);
 
