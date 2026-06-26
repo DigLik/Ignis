@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<PackageId>DigLik.Ignis</PackageId>
-		<Version>0.0.2</Version>
+		<Version>0.0.3</Version>
 		<Authors>DigLik</Authors>
 		<Description>Graphics and windowing platform abstraction for Ignis.</Description>
 		<PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>

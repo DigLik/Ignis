@@ -12,6 +12,20 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Отключение оверхеда среды -->
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+
+    <!-- Оптимизации JIT и компиляции -->
+    <OptimizationPreference>Size</OptimizationPreference>
+    <IsTrimmable>true</IsTrimmable>
+
+    <!-- Настройка GC -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(MSBuildProjectName)' != 'Ignis.Core' And '$(MSBuildProjectName)' != 'Ignis.Platform'">
