@@ -132,31 +132,11 @@ public sealed partial class Renderer
             if (fontIdx < 0 || fontIdx >= 96)
                 fontIdx = 95; // Unknown to block/DEL char
 
-            // Находим фактические границы символа по горизонтали
-            int minCol = 8;
-            int maxCol = -1;
-            bool hasPixels = false;
-
-            for (int r = 0; r < 8; r++)
-            {
-                byte rowByte = FontData[fontIdx * 8 + r];
-                if (rowByte == 0) continue;
-
-                for (int col = 0; col < 8; col++)
-                {
-                    if ((rowByte & (1 << (7 - col))) != 0)
-                    {
-                        hasPixels = true;
-                        if (col < minCol) minCol = col;
-                        if (col > maxCol) maxCol = col;
-                    }
-                }
-            }
-
+            var metric = _glyphMetrics[fontIdx];
             float charWidth;
-            if (hasPixels)
+            if (metric.HasPixels)
             {
-                charWidth = (maxCol - minCol + 1) * pixelSize;
+                charWidth = metric.Width * pixelSize;
 
                 _batcher.Add(new GPUShape
                 {
@@ -164,7 +144,7 @@ public sealed partial class Renderer
                     P1 = new Vector2(cursorX + charWidth * 0.5f, p.Y + charSize * 0.5f),
                     P2 = new Vector2(charWidth, charSize),
                     Angle = fontIdx,
-                    Thickness = minCol,
+                    Thickness = metric.MinCol,
                     Color = c.ToVector4()
                 });
 
@@ -206,30 +186,11 @@ public sealed partial class Renderer
             if (fontIdx < 0 || fontIdx >= 96)
                 fontIdx = 95; // Unknown to block/DEL char
 
-            int minCol = 8;
-            int maxCol = -1;
-            bool hasPixels = false;
-
-            for (int r = 0; r < 8; r++)
-            {
-                byte rowByte = FontData[fontIdx * 8 + r];
-                if (rowByte == 0) continue;
-
-                for (int col = 0; col < 8; col++)
-                {
-                    if ((rowByte & (1 << (7 - col))) != 0)
-                    {
-                        hasPixels = true;
-                        if (col < minCol) minCol = col;
-                        if (col > maxCol) maxCol = col;
-                    }
-                }
-            }
-
+            var metric = _glyphMetrics[fontIdx];
             float charWidth;
-            if (hasPixels)
+            if (metric.HasPixels)
             {
-                charWidth = (maxCol - minCol + 1) * pixelSize;
+                charWidth = metric.Width * pixelSize;
             }
             else
             {
@@ -372,4 +333,50 @@ public sealed partial class Renderer
         0x08, 0x15, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, // ~
         0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F // DEL (127)
     ];
+
+    private struct GlyphMetric
+    {
+        public byte MinCol;
+        public byte MaxCol;
+        public byte Width;
+        public bool HasPixels;
+    }
+
+    private static readonly GlyphMetric[] _glyphMetrics = PrecomputeGlyphMetrics();
+
+    private static GlyphMetric[] PrecomputeGlyphMetrics()
+    {
+        var metrics = new GlyphMetric[96];
+        for (int i = 0; i < 96; i++)
+        {
+            int minCol = 8;
+            int maxCol = -1;
+            bool hasPixels = false;
+
+            for (int r = 0; r < 8; r++)
+            {
+                byte rowByte = FontData[i * 8 + r];
+                if (rowByte == 0) continue;
+
+                for (int col = 0; col < 8; col++)
+                {
+                    if ((rowByte & (1 << (7 - col))) != 0)
+                    {
+                        hasPixels = true;
+                        if (col < minCol) minCol = col;
+                        if (col > maxCol) maxCol = col;
+                    }
+                }
+            }
+
+            metrics[i] = new GlyphMetric
+            {
+                MinCol = (byte)minCol,
+                MaxCol = (byte)(maxCol == -1 ? 0 : maxCol),
+                Width = (byte)(hasPixels ? (maxCol - minCol + 1) : 0),
+                HasPixels = hasPixels
+            };
+        }
+        return metrics;
+    }
 }
